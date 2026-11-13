@@ -3,6 +3,7 @@
 import argparse
 import random
 import sys
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from vacuum_env import VacuumGridEnv
@@ -104,6 +105,46 @@ def train_q_learning(
         current_epsilon = max(min_epsilon, current_epsilon * epsilon_decay)
 
     return q_table, reward_history
+
+
+def save_training_plot(reward_history: List[float], output: Path) -> None:
+    """Save episode rewards and their 100-episode moving average as a chart."""
+    if not reward_history:
+        raise ValueError("reward_history không được để trống.")
+
+    import matplotlib.pyplot as plt
+
+    window = min(100, len(reward_history))
+    moving_average = [
+        sum(reward_history[index - window + 1 : index + 1]) / window
+        for index in range(window - 1, len(reward_history))
+    ]
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    figure, axis = plt.subplots(figsize=(10, 5))
+    axis.plot(
+        range(1, len(reward_history) + 1),
+        reward_history,
+        color="#9CA3AF",
+        alpha=0.3,
+        linewidth=0.7,
+        label="Reward mỗi episode",
+    )
+    axis.plot(
+        range(window, len(reward_history) + 1),
+        moving_average,
+        color="#1565C0",
+        linewidth=2,
+        label=f"Trung bình trượt ({window} episode)",
+    )
+    axis.set_xlabel("Episode")
+    axis.set_ylabel("Tổng reward")
+    axis.set_title("Q-Learning: reward theo episode")
+    axis.grid(True, alpha=0.3)
+    axis.legend()
+    figure.tight_layout()
+    figure.savefig(output, dpi=160)
+    plt.close(figure)
 
 
 def run_greedy_episode(
@@ -225,6 +266,12 @@ def main() -> None:
         description="Huấn luyện và chạy Q-Learning cho robot hút bụi."
     )
     parser.add_argument("--episodes", type=int, default=15000)
+    parser.add_argument(
+        "--plot-output",
+        type=Path,
+        default=Path("q_learning_training.png"),
+        help="Đường dẫn lưu biểu đồ reward theo episode.",
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--render",
@@ -250,10 +297,12 @@ def main() -> None:
 
     recent_count = min(20, len(reward_history))
     recent_average = sum(reward_history[-recent_count:]) / recent_count
+    save_training_plot(reward_history, args.plot_output)
     print(
         f"Huấn luyện xong {len(reward_history)} episode; "
         f"{len(q_table)} trạng thái đã học; "
-        f"thưởng trung bình {recent_count} episode cuối: {recent_average:.2f}."
+        f"thưởng trung bình {recent_count} episode cuối: {recent_average:.2f}.\n"
+        f"Biểu đồ reward đã lưu tại: {args.plot_output}"
     )
     print("\nChạy chính sách đã học:")
     if args.render == "matplotlib":

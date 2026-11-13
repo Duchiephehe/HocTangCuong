@@ -95,7 +95,8 @@ Giá trị mặc định trong `main()` khớp với cấu hình báo cáo:
 
 | Tham số | Giá trị mặc định | Ý nghĩa |
 |---|---:|---|
-| `episodes` | `600` | Số episode huấn luyện |
+| `episodes` trong `main()` | `15.000` | Số episode huấn luyện khi chạy file bằng terminal |
+| `episodes` mặc định của `train_q_learning()` | `600` | Giá trị dùng khi gọi hàm mà không truyền tham số |
 | `alpha` | `0.1` | Tốc độ học |
 | `gamma` | `0.9` | Hệ số chiết khấu |
 | `epsilon` | `1.0` | Xác suất khám phá ban đầu |
@@ -116,8 +117,9 @@ Q-Table được khởi tạo theo kiểu **lazy**: trạng thái nào được 
    5. Cập nhật Q theo công thức Q-Learning.
    6. Dừng episode khi `terminated` hoặc `truncated`, lưu tổng phần thưởng và giảm epsilon.
 3. Sau huấn luyện, đặt lại môi trường để có một bố trí bụi cho lượt kiểm thử.
-4. Chạy chính sách greedy đã học và hiển thị từng bước trên cửa sổ Matplotlib. Có thể chọn bản đồ ASCII thay cho giao diện đồ họa.
-5. In kết quả gồm trạng thái thành công/thất bại, số bước, số lần va chạm và tổng phần thưởng.
+4. Lưu biểu đồ reward theo episode vào `q_learning_training.png`; biểu đồ gồm reward từng episode và trung bình trượt tối đa 100 episode.
+5. Chạy chính sách greedy đã học và hiển thị từng bước trên cửa sổ Matplotlib. Có thể chọn bản đồ ASCII thay cho giao diện đồ họa.
+6. In kết quả gồm trạng thái thành công/thất bại, số bước, số lần va chạm và tổng phần thưởng.
 
 ### Mã giả
 
@@ -157,10 +159,10 @@ Trong Terminal tại thư mục dự án:
 python q_learning.py
 ```
 
-Mặc định chương trình huấn luyện 600 episode rồi mở giao diện đồ họa cho một lượt chạy. Có thể thay đổi số episode và tốc độ hoạt ảnh:
+Mặc định chương trình huấn luyện 15.000 episode, lưu biểu đồ reward và mở giao diện đồ họa cho một lượt chạy. Có thể thay đổi số episode, đường dẫn biểu đồ và tốc độ hoạt ảnh:
 
 ```powershell
-python q_learning.py --episodes 15000 --interval-ms 800
+python q_learning.py --episodes 20000 --plot-output ket_qua_q_learning.png --interval-ms 800
 ```
 
 Để chạy bản đồ chữ trong terminal:
@@ -175,9 +177,25 @@ python q_learning.py --render ascii
 python q_learning.py --episodes 600 --seed 42
 ```
 
-## 8. Giới hạn và lưu ý khi đánh giá
+## 8. So sánh thuật toán và biểu đồ kết quả
 
-- 600 episode là tham số thực nghiệm theo cấu hình báo cáo, không đảm bảo agent đã học tốt trên mọi bố trí bụi. Có thể tăng số episode và đánh giá trên nhiều bố trí kiểm thử độc lập.
+Chạy chương trình so sánh Q-Learning với chính sách tham lam tìm ô bụi gần nhất bằng BFS:
+
+```powershell
+python compare_algorithms.py --episodes 30 --training-episodes 15000 --seed 42
+```
+
+Hai thuật toán được đánh giá trên cùng một tập bản đồ bụi kiểm thử. Q-Learning được huấn luyện riêng trên các bố trí bụi ngẫu nhiên trước khi đánh giá. Chương trình tạo:
+
+- `algorithm_comparison.csv`: kết quả từng episode của cả BFS và Q-Learning.
+- `algorithm_comparison.png`: biểu đồ so sánh tỷ lệ thành công, số bước trung bình và tổng reward trung bình.
+- `algorithm_comparison_q_learning_training.png`: reward từng episode huấn luyện Q-Learning cùng đường trung bình trượt.
+
+Có thể đổi số bản đồ kiểm thử bằng `--episodes`, số episode học Q-Learning bằng `--training-episodes`, và tên/vị trí CSV bằng `--output`. Tên hai biểu đồ được tạo tự động dựa trên tên CSV.
+
+## 9. Giới hạn và lưu ý khi đánh giá
+
+- Số episode huấn luyện là tham số thực nghiệm, không đảm bảo agent đã học tốt trên mọi bố trí bụi. Có thể tăng số episode và đánh giá trên nhiều bố trí kiểm thử độc lập.
 - Reward trung bình trong lúc huấn luyện được tính trên các episode có khám phá; không nên dùng riêng chỉ số này để kết luận chính sách greedy đã tốt. Nên báo cáo thêm tỷ lệ dọn sạch thành công, số bước trung bình và số va chạm trên nhiều episode kiểm thử.
 - Q-Table học trên một cấu hình lưới và phần thưởng cụ thể; thay đổi vật cản, reward hoặc cách đặt bụi có thể cần huấn luyện lại.
 - Môi trường là mô phỏng. Việc robot chạy trên cửa sổ đồ họa không điều khiển phần cứng máy hút bụi thật.
