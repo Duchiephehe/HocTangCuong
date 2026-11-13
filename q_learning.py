@@ -224,7 +224,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Huấn luyện và chạy Q-Learning cho robot hút bụi."
     )
-    parser.add_argument("--episodes", type=int, default=600)
+    parser.add_argument("--episodes", type=int, default=15000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument(
         "--render",
