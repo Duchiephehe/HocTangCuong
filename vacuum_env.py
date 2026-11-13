@@ -169,9 +169,9 @@ class VacuumGridEnv:
         # Tính tọa độ dự kiến
         dx, dy = 0, 0
         if effective_action == self.ACTION_UP:
-            dy = -1
-        elif effective_action == self.ACTION_DOWN:
             dy = 1
+        elif effective_action == self.ACTION_DOWN:
+            dy = -1
         elif effective_action == self.ACTION_LEFT:
             dx = -1
         elif effective_action == self.ACTION_RIGHT:
@@ -230,7 +230,7 @@ class VacuumGridEnv:
         lines = []
         header = f"--- Bước: {self.current_step} | Bụi còn: {len(self.active_dust)} ---"
         lines.append(header)
-        for y in range(self.height):
+        for y in range(self.height - 1, -1, -1):
             row_str = ""
             for x in range(self.width):
                 pos = (x, y)
@@ -309,7 +309,7 @@ class VacuumGridEnv:
         )
 
         ax.set_xlim(-0.5, self.width - 0.5)
-        ax.set_ylim(self.height - 0.5, -0.5)
+        ax.set_ylim(-0.5, self.height - 0.5)
         ax.set_xticks(range(self.width))
         ax.set_yticks(range(self.height))
         ax.set_xticks([x - 0.5 for x in range(self.width + 1)], minor=True)
@@ -427,5 +427,5 @@ if __name__ == "__main__":
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if callable(reconfigure):
         reconfigure(encoding="utf-8")
-    env = VacuumGridEnv()
+    env = VacuumGridEnv(start_pos=(0, 0))
     env.render_matplotlib()
