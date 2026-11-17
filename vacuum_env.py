@@ -29,6 +29,7 @@ class VacuumGridEnv:
         dust_positions: Optional[List[Tuple[int, int]]] = None,
         max_steps: int = 100,
         stochastic_prob: float = 0.0,
+        num_dust: int = 3,
     ):
         if not isinstance(width, int) or isinstance(width, bool) or width <= 0:
             raise ValueError("width phải là số nguyên dương.")
@@ -55,11 +56,23 @@ class VacuumGridEnv:
             self._validate_position(pos, "obstacles")
             for pos in obstacle_positions
         }
-        if len(self.obstacles) != 4:
-            raise ValueError("Cần cấu hình đúng 4 vị trí vật cản khác nhau.")
+        max_obstacles = max(1, (self.width * self.height) // 2)
+        if len(self.obstacles) > max_obstacles:
+            raise ValueError(
+                f"Số vật cản tối đa cho lưới {self.width}×{self.height} là {max_obstacles}."
+            )
         if self.start_pos in self.obstacles:
             raise ValueError("Vị trí xuất phát không được trùng vật cản.")
+        if not isinstance(num_dust, int) or isinstance(num_dust, bool) or num_dust <= 0:
+            raise ValueError("num_dust phải là số nguyên dương.")
+        available_dust_positions = width * height - len(self.obstacles) - 1
+        if num_dust > available_dust_positions:
+            raise ValueError(
+                f"num_dust không được lớn hơn {available_dust_positions} "
+                "ô trống ngoài vị trí xuất phát."
+            )
 
+        self.num_dust = num_dust
         self.randomize_dust = dust_positions is None
         self.initial_dust = (
             self._sample_dust_positions()
@@ -69,8 +82,13 @@ class VacuumGridEnv:
                 for pos in (dust_positions if dust_positions is not None else [])
             ]
         )
-        if len(self.initial_dust) != 3 or len(set(self.initial_dust)) != 3:
-            raise ValueError("Cần cấu hình đúng 3 vị trí bụi khác nhau.")
+        if (
+            len(self.initial_dust) != self.num_dust
+            or len(set(self.initial_dust)) != self.num_dust
+        ):
+            raise ValueError(
+                f"Cần cấu hình đúng {self.num_dust} vị trí bụi khác nhau."
+            )
         if any(pos == self.start_pos or pos in self.obstacles for pos in self.initial_dust):
             raise ValueError("Vị trí bụi không được trùng robot xuất phát hoặc vật cản.")
         self.max_steps = max_steps
@@ -115,9 +133,84 @@ class VacuumGridEnv:
             for x in range(self.width)
             if (x, y) != self.start_pos and (x, y) not in self.obstacles
         ]
-        if len(available_positions) < 3:
-            raise ValueError("Cần ít nhất 3 ô trống ngoài vị trí xuất phát để đặt bụi.")
-        return random.sample(available_positions, 3)
+        if len(available_positions) < self.num_dust:
+            raise ValueError(
+                f"Cần ít nhất {self.num_dust} ô trống ngoài vị trí xuất phát "
+                "để đặt bụi."
+            )
+        return random.sample(available_positions, self.num_dust)
+
+    def max_obstacles(self) -> int:
+        """Số vật cản tối đa theo nguyên tắc n²/2."""
+        return max(1, (self.width * self.height) // 2)
+
+    def set_num_dust(self, num_dust: int) -> None:
+        """Choose a new dust count and start a fresh episode."""
+        max_dust = self.width * self.height - len(self.obstacles) - 1
+        if (
+            not isinstance(num_dust, int)
+            or isinstance(num_dust, bool)
+            or not 1 <= num_dust <= max_dust
+        ):
+            raise ValueError(f"num_dust phải nằm trong khoảng [1, {max_dust}].")
+
+        self.num_dust = num_dust
+        self.randomize_dust = True
+        self.initial_dust = self._sample_dust_positions()
+        self.robot_pos = self.start_pos
+        self.active_dust = set(self.initial_dust)
+        self.current_step = 0
+        self._episode_done = False
+        self._episode_successful = False
+
+    def set_num_obstacles(self, num_obstacles: int) -> None:
+        """Thay đổi số lượng vật cản và khởi động lại episode mới."""
+        max_allowed = self.max_obstacles()
+        if (
+            not isinstance(num_obstacles, int)
+            or isinstance(num_obstacles, bool)
+            or not 0 <= num_obstacles <= max_allowed
+        ):
+            raise ValueError(f"num_obstacles phải nằm trong khoảng [0, {max_allowed}].")
+
+        available_positions = [
+            (x, y)
+            for y in range(self.height)
+            for x in range(self.width)
+            if (x, y) != self.start_pos
+        ]
+        if len(available_positions) < num_obstacles:
+            raise ValueError(
+                f"Không đủ ô trống để đặt {num_obstacles} vật cản trên lưới {self.width}×{self.height}."
+            )
+
+        self.obstacles = set(random.sample(available_positions, num_obstacles))
+        self.num_dust = min(self.num_dust, self.width * self.height - len(self.obstacles) - 1)
+        self.randomize_dust = True
+        self.initial_dust = self._sample_dust_positions()
+        self.robot_pos = self.start_pos
+        self.active_dust = set(self.initial_dust)
+        self.current_step = 0
+        self._episode_done = False
+        self._episode_successful = False
+
+    def set_grid_size(self, size: int) -> None:
+        """Resize the environment to a square grid and start a fresh episode."""
+        if not isinstance(size, int) or isinstance(size, bool) or size < 4:
+            raise ValueError("Kích thước lưới vuông phải là số nguyên từ 4 trở lên.")
+        if self.start_pos[0] >= size or self.start_pos[1] >= size:
+            raise ValueError("Kích thước mới không chứa được vị trí xuất phát.")
+
+        self.width = size
+        self.height = size
+        max_allowed = self.max_obstacles()
+        target_obstacles = min(len(self.obstacles), max_allowed)
+        if target_obstacles == 0:
+            self.obstacles = set()
+        else:
+            self.set_num_obstacles(target_obstacles)
+        max_dust = size * size - len(self.obstacles) - 1
+        self.set_num_dust(min(self.num_dust, max_dust))
 
     def get_state(self) -> Tuple[int, int, int]:
         """Trả về tuple trạng thái s = (x, y, dust_bitmask)"""
@@ -345,18 +438,93 @@ class VacuumGridEnv:
     def render_matplotlib(
         self, show: bool = True, axes: Optional[Any] = None
     ) -> Tuple[Any, Any]:
-        """Hiển thị hoặc cập nhật bản đồ đồ họa; trả về (figure, axes)."""
+        """Hiển thị bản đồ; khi tạo cửa sổ mới có thanh trượt chọn số bụi."""
         import importlib
 
         plt = importlib.import_module("matplotlib.pyplot")
 
+        interactive = axes is None
         if axes is None:
             fig, ax = plt.subplots(figsize=(max(5, self.width), max(4, self.height)))
         else:
             ax = axes
             fig = ax.figure
         self._draw_matplotlib(ax)
-        fig.tight_layout()
+        if interactive:
+            from matplotlib.widgets import Slider
+
+            fig.subplots_adjust(bottom=0.44)
+            size_slider_ax = fig.add_axes([0.2, 0.26, 0.6, 0.04])
+            size_slider = Slider(
+                size_slider_ax,
+                "Kích thước lưới n×n",
+                4,
+                20,
+                valinit=self.width,
+                valstep=1,
+            )
+
+            obstacle_slider_ax = fig.add_axes([0.2, 0.16, 0.6, 0.04])
+            obstacle_slider = Slider(
+                obstacle_slider_ax,
+                "Số vật cản",
+                0,
+                self.max_obstacles(),
+                valinit=len(self.obstacles),
+                valstep=1,
+            )
+
+            dust_slider_ax = fig.add_axes([0.2, 0.06, 0.6, 0.04])
+            dust_slider = Slider(
+                dust_slider_ax,
+                "Số vị trí bụi",
+                1,
+                self.width * self.height - len(self.obstacles) - 1,
+                valinit=self.num_dust,
+                valstep=1,
+            )
+
+            def update_grid_size(value: float) -> None:
+                self.set_grid_size(int(value))
+                obstacle_slider.valmax = self.max_obstacles()
+                obstacle_slider.ax.set_xlim(obstacle_slider.valmin, obstacle_slider.valmax)
+                if int(obstacle_slider.val) != len(self.obstacles):
+                    obstacle_slider.set_val(len(self.obstacles))
+                max_dust = self.width * self.height - len(self.obstacles) - 1
+                dust_slider.valmax = max_dust
+                dust_slider.ax.set_xlim(dust_slider.valmin, max_dust)
+                if int(dust_slider.val) > max_dust:
+                    dust_slider.set_val(max_dust)
+                elif int(dust_slider.val) < 1:
+                    dust_slider.set_val(1)
+                self._draw_matplotlib(ax)
+                fig.canvas.draw_idle()
+
+            def update_obstacle_count(value: float) -> None:
+                self.set_num_obstacles(int(value))
+                max_dust = self.width * self.height - len(self.obstacles) - 1
+                dust_slider.valmax = max_dust
+                dust_slider.ax.set_xlim(dust_slider.valmin, max_dust)
+                if int(dust_slider.val) > max_dust:
+                    dust_slider.set_val(max_dust)
+                elif int(dust_slider.val) < 1:
+                    dust_slider.set_val(1)
+                self._draw_matplotlib(ax)
+                fig.canvas.draw_idle()
+
+            def update_dust_count(value: float) -> None:
+                self.set_num_dust(int(value))
+                self._draw_matplotlib(ax)
+                fig.canvas.draw_idle()
+
+            size_slider.on_changed(update_grid_size)
+            obstacle_slider.on_changed(update_obstacle_count)
+            dust_slider.on_changed(update_dust_count)
+            setattr(fig, "_grid_size_slider", size_slider)
+            setattr(fig, "_obstacle_count_slider", obstacle_slider)
+            setattr(fig, "_dust_count_slider", dust_slider)
+        else:
+            fig.tight_layout()
         if show:
             plt.show()
         return fig, ax

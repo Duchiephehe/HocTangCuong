@@ -18,6 +18,22 @@ EpisodeResult = Dict[str, object]
 DEFAULT_OBSTACLES = [(1, 1), (2, 2), (3, 1), (3, 3)]
 
 
+def make_obstacles(grid_size: int = 5) -> List[Position]:
+    """Create the default obstacle layout for the requested grid size."""
+    obstacles = []
+    for x, y in DEFAULT_OBSTACLES:
+        if 0 <= x < grid_size and 0 <= y < grid_size:
+            obstacles.append((x, y))
+    if len(obstacles) != len(DEFAULT_OBSTACLES):
+        # keep the classic obstacle pattern even when the grid is slightly smaller
+        obstacles = [
+            (x, y)
+            for x, y in DEFAULT_OBSTACLES
+            if 0 <= x < grid_size and 0 <= y < grid_size
+        ]
+    return obstacles
+
+
 def nearest_dust_policy(env: VacuumGridEnv) -> int:
     """Take a shortest-path step toward the closest remaining dust cell."""
     start = env.robot_pos
@@ -62,32 +78,46 @@ POLICIES: Dict[str, Policy] = {
 }
 
 
-def make_scenarios(episodes: int, seed: int) -> List[List[Position]]:
+def make_scenarios(
+    episodes: int, seed: int, grid_size: int = 5, num_dust: int = 3
+) -> List[List[Position]]:
     """Create one fixed set of dust layouts shared by every policy."""
     rng = random.Random(seed)
     start = (0, 0)
+    obstacles = set(make_obstacles(grid_size))
     available = [
         (x, y)
-        for y in range(5)
-        for x in range(5)
-        if (x, y) != start and (x, y) not in DEFAULT_OBSTACLES
+        for y in range(grid_size)
+        for x in range(grid_size)
+        if (x, y) != start and (x, y) not in obstacles
     ]
-    return [rng.sample(available, 3) for _ in range(episodes)]
+    if len(available) < num_dust:
+        raise ValueError(
+            f"Số ô trống khả dụng ({len(available)}) nhỏ hơn num_dust ({num_dust})."
+        )
+    return [rng.sample(available, num_dust) for _ in range(episodes)]
 
 
 def evaluate_algorithms(
-    episodes: int = 30, seed: int = 42, max_steps: int = 100
+    episodes: int = 30,
+    seed: int = 42,
+    max_steps: int = 100,
+    grid_size: int = 5,
+    num_dust: int = 3,
 ) -> List[EpisodeResult]:
     if episodes <= 0:
         raise ValueError("episodes phải là số nguyên dương.")
     if max_steps <= 0:
         raise ValueError("max_steps phải là số nguyên dương.")
 
-    scenarios = make_scenarios(episodes, seed)
+    scenarios = make_scenarios(episodes, seed, grid_size=grid_size, num_dust=num_dust)
     results: List[EpisodeResult] = []
     for algorithm, policy in POLICIES.items():
         for episode, dust_positions in enumerate(scenarios, start=1):
             env = VacuumGridEnv(
+                width=grid_size,
+                height=grid_size,
+                num_dust=num_dust,
                 dust_positions=dust_positions,
                 max_steps=max_steps,
             )
@@ -176,10 +206,18 @@ def main() -> None:
     parser.add_argument("--episodes", type=int, default=30)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-steps", type=int, default=100)
+    parser.add_argument("--grid-size", type=int, default=5)
+    parser.add_argument("--num-dust", type=int, default=3)
     parser.add_argument("--output", type=Path, default=Path("algorithm_comparison.csv"))
     args = parser.parse_args()
 
-    results = evaluate_algorithms(args.episodes, args.seed, args.max_steps)
+    results = evaluate_algorithms(
+        args.episodes,
+        args.seed,
+        args.max_steps,
+        grid_size=args.grid_size,
+        num_dust=args.num_dust,
+    )
     save_results(results, args.output)
 
     print(f"So sánh trên {args.episodes} bản đồ (seed={args.seed}):")
